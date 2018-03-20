@@ -71,15 +71,15 @@ def getpayoutstats(address,days=35):
     payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/100000000
     payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/100000000
     payoutstats['portion']=((days*5*24*60*4/201)*(balance/payoutstats['vote']))
-    payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']*100
-    payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/201)*(balance/payoutstats['vote']))*100
+    payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
+    payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/201)*(balance/payoutstats['vote']))
     payoutstats.loc[payoutstats['rank']>201, ['% shared','portion']] = None
-    cols=['% shared','count','frequency','amount','Days_Elapsed']
+    cols=['count','frequency','amount','Days_Elapsed']
     for i in cols:
         payoutstats[i]=payoutstats[i].round(1)
     payoutstats=payoutstats.sort_values(by='amount',ascending=False)
     payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'days since last payout','amount':'total paid','count':'payout count','frequency':'days between payouts','% shared':'percent shared'}, inplace=True)
-    dropcols=['senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion']
+    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.set_index('delegate')
     payoutstats.index.name = None
