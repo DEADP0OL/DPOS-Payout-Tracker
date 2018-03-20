@@ -1,6 +1,7 @@
 import pandas as pd
 import requests
 import json
+import numpy as np
 
 def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
@@ -67,20 +68,26 @@ def getpayoutstats(address,days=35):
     txstats=txstats.groupby('senderId').agg({'Days_Elapsed':'first','frequency':'mean','amount':'sum','payments':'mean','count':'count'}).reset_index()
     txstats=txstats[txstats['amount']>0]
     payoutstats=pd.merge(votes,txstats,how='left',left_on='address',right_on='senderId')
+    payoutstats['vote count'] = payoutstats.groupby('senderId')['senderId'].transform('count')
+    payoutstats['total approval'] = payoutstats.groupby('senderId')['approval'].transform('sum')
     payoutstats['amount']=pd.to_numeric(payoutstats['amount'])/100000000
+    payoutstats['amount']=payoutstats['amount']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
+    payoutstats['payments']=payoutstats['payments']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
     payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/100000000
     payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/100000000
     payoutstats['portion']=((days*5*24*60*4/201)*(balance/payoutstats['vote']))
     payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
+    payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
     payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/201)*(balance/payoutstats['vote']))
     payoutstats.loc[payoutstats['rank']>201, ['% shared','portion']] = None
-    cols=['count','frequency','amount','Days_Elapsed']
+    cols=['count','frequency','amount','Days_Elapsed','paid x approval']
     for i in cols:
-        payoutstats[i]=payoutstats[i].round(1)
-    payoutstats=payoutstats.sort_values(by='amount',ascending=False)
-    payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'days since last payout','amount':'total paid','count':'payout count','frequency':'days between payouts','% shared':'percent shared'}, inplace=True)
-    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion']
+        payoutstats[i]=payoutstats[i].round(2)
+    payoutstats=payoutstats.sort_values(by='paid x approval',ascending=False)
+    payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
+    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.set_index('delegate')
     payoutstats.index.name = None
+    payoutstats = payoutstats.replace(np.nan, '', regex=True)
     return payoutstats
