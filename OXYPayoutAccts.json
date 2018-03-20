@@ -1,8 +1,4 @@
-{
-	"delegates":{
-		"13376930448536935060X":"Mars"
-		},
-	"payoutaccts":{
-		"13376930448536935060X":"11996624967604925641X"
-		}
-}
+[
+	{"delegate":"mars","payoutacct":"mars_payouts",
+	"address":"13376930448536935060X","payaddress":"11996624967604925641X"}
+]
