@@ -19,7 +19,8 @@ def tracker():
     form = ReusableForm(request.form)
  
     print (form.errors)
-    payoutstats=None#pd.DataFrame(columns=[])#address', 'productivity', 'days between payouts', 'total paid','payout count', '% shared'])
+    payoutstats=None
+    address=None
     if request.method == 'POST':
         address=request.form['address']
         dayspan=request.form['dayspan']
@@ -30,11 +31,17 @@ def tracker():
             flash("Success")
         else:
             flash('Error: All the form fields are required. ')
-    if payoutstats is None:
+    if (address is None):
         table=""
+        return render_template('form.html', form=form)
     else:
-        table=payoutstats.to_html(formatters={'percent shared': '{:,.1%}'.format})
-    return render_template('tracker.html', form=form,show=table)
+        if (payoutstats is None):
+            table=""
+            flash('Error: Invalid Address.')
+            return render_template('form.html', form=form)
+        else:
+            table=payoutstats.to_html(formatters={'percent shared': '{:,.1%}'.format})
+            return render_template('tracker.html', form=form,show=table,dayspan=dayspan,address=address)
  
 if __name__ == "__main__":
     if 'liveconsole' not in gethostname():
