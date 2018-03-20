@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 import json
 import numpy as np
+import re
 
 def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
@@ -45,20 +46,45 @@ def getincomingtxs(url,address,days=35):
     incomingtxs=incomingtxs[incomingtxs['Days_Elapsed']<=days]
     return incomingtxs
 
-def getpayoutstats(address,days=35):
+def getcoindata(address):
     if address[-3:]=='LWF':
         url='https://wallet.lwf.io/api/'
         #coin='LWF'
-        payoutaccts=json.load(open('LWFPayoutAccts.json'))['payoutaccts']
+        payaccts=json.load(open('LWFPayoutAccts.json'))
+        pools=getpools('LWFPools.txt')
     elif address[-1:]=='X':
         url='https://wallet.oxycoin.io/api/'
         #coin='OXY'
-        payoutaccts=json.load(open('OXYPayoutAccts.json'))['payoutaccts']
+        payaccts=json.load(open('OXYPayoutAccts.json'))
+        pools=getpools('OXYPools.txt')
     else:
+        url=None
+        payaccts=None
+    if payaccts is not None:
+        payaccts={i['address']:i['payaddress'] for i in payaccts}
+    return url,payaccts,pools    
+def getpools(file):
+    pools = open(file, 'r').read()
+    pools = pools.replace('`','').lower()
+    pools = max(pools.split('*'), key=len).split(';')
+    pools = pd.DataFrame(pools,columns=['string'])
+    pools['delegate'] = pools['string'].str.extract('^\s*([a-z0-9_.]*)', expand=False)
+    pools['listed % share'] = pools['string'].str.extract('\(*[x]*([0-9.]*)\%', expand=False)
+    pools['listed frequency'] = pools['string'].str.extract('\%-([a-z0-9]*)\,*\)*', expand=False)
+    pools.loc[pools['listed frequency']=='w', ['listed frequency']] = 7
+    pools.loc[pools['listed frequency']=='d', ['listed frequency']] = 1
+    pools.loc[pools['listed frequency']=='2d', ['listed frequency']] = 2
+    pools['listed frequency']=pd.to_numeric(pools['listed frequency'])
+    del pools['string']
+    return pools
+
+def getpayoutstats(address,days=35):
+    url,payaccts,pools=getcoindata(address)
+    if (url is None) or (payaccts is None):
         return None
     incomingtxs=getincomingtxs(url,address,days)
     votes=getvotes(url,address)
-    votes['address']=votes['address'].replace(payoutaccts)
+    votes['address']=votes['address'].replace(payaccts)
     balance=getbalance(url,address)
     txstats=incomingtxs.sort_values(by=['senderId','timestamp'],ascending=False)
     txstats['frequency']=txstats['Days_Elapsed'].diff()
@@ -75,6 +101,7 @@ def getpayoutstats(address,days=35):
     payoutstats['payments']=payoutstats['payments']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
     payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/100000000
     payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/100000000
+    payoutstats['frequency']=pd.to_numeric(payoutstats['frequency'])
     payoutstats['portion']=((days*5*24*60*4/201)*(balance/payoutstats['vote']))
     payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
     payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
@@ -87,7 +114,12 @@ def getpayoutstats(address,days=35):
     payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
     dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts']
     payoutstats=payoutstats.drop(dropcols,axis=1)
+    payoutstats = pd.merge(payoutstats,pools,how='left',on='delegate')
     payoutstats=payoutstats.set_index('delegate')
     payoutstats.index.name = None
+    payoutstats['comments']=''
+    payoutstats.loc[((payoutstats['listed frequency']+(7/payoutstats['listed frequency'])*(50000/balance)<payoutstats['last paid (days)'])&(payoutstats['listed frequency'])>0), ['comments']] = 'payout overdue'
+    payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed frequency'])>0), ['comments']] = 'no payouts yet'
+    payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
     return payoutstats
