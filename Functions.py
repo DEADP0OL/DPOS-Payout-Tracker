@@ -54,8 +54,7 @@ def getpayoutstats(address,days=35):
         #coin='OXY'
         payoutaccts=json.load(open('OXYPayoutAccts.json'))['payoutaccts']
     else:
-        return 'Address not LWF or OXY'
-    payoutaccts=json.load(open('PayoutAccts.json'))['payoutaccts']
+        return None
     incomingtxs=getincomingtxs(url,address,days)
     votes=getvotes(url,address)
     votes['address']=votes['address'].replace(payoutaccts)
@@ -77,9 +76,9 @@ def getpayoutstats(address,days=35):
     payoutstats.loc[payoutstats['rank']>201, ['% shared','portion']] = None
     cols=['% shared','count','frequency','amount','Days_Elapsed']
     for i in cols:
-        payoutstats[i]=payoutstats[i].round()
+        payoutstats[i]=payoutstats[i].round(1)
     payoutstats=payoutstats.sort_values(by='amount',ascending=False)
-    payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'days since last payout','amount':'total paid','count':'payout count','frequency':'days between payouts'}, inplace=True)
+    payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'days since last payout','amount':'total paid','count':'payout count','frequency':'days between payouts','% shared':'percent shared'}, inplace=True)
     dropcols=['senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.set_index('delegate')
