@@ -33,7 +33,7 @@ def tracker():
     if payoutstats is None:
         table=""
     else:
-        table=payoutstats.to_html()
+        table=payoutstats.to_html(formatters={'percent shared': '{:,.1%}'.format})
     return render_template('tracker.html', form=form,show=table)
  
 if __name__ == "__main__":
