@@ -1,6 +1,7 @@
 from flask import Flask, render_template, flash, request
 from wtforms import Form, TextField, TextAreaField, validators, StringField, SubmitField
 from Functions import *
+from socket import gethostname
  
 # App config.
 DEBUG = True
@@ -36,4 +37,5 @@ def tracker():
     return render_template('tracker.html', form=form,show=table)
  
 if __name__ == "__main__":
-    app.run()
+    if 'liveconsole' not in gethostname():
+        app.run()
