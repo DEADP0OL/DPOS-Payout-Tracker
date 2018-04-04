@@ -4,7 +4,7 @@ import json
 import numpy as np
 import re
 from bokeh.plotting import figure, show, ColumnDataSource
-from bokeh.models import  HoverTool,WheelZoomTool
+from bokeh.models import  HoverTool, WheelZoomTool, BoxZoomTool, ResetTool
 
 def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
@@ -139,7 +139,8 @@ def create_figure(df):
             ("paid", "@y{0}"),
             ("delegate", "@desc"),
             ])
-    plot=figure(title=None,x_axis_label='rank',y_axis_label='paid', tools=[hover, 'pan', 'wheel_zoom'],plot_width=600, plot_height=300)
+    plot=figure(title=None,x_axis_label='rank',y_axis_label='paid', tools=[hover,'pan','box_zoom','reset'],plot_width=600, plot_height=300)
     plot.circle('x','y', size=10,source=source)
     plot.toolbar.active_scroll = plot.select_one(WheelZoomTool)
+    plot.toolbar.active_drag = plot.select_one(BoxZoomTool)
     return plot
