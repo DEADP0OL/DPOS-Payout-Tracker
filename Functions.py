@@ -81,7 +81,12 @@ def getpools(file):
     del pools['string']
     return pools
 
-def getpayoutstats(address,days=35,orderby='paid x approval'):
+def getpayoutstats(address,days=35,orderby='rewards/day'):
+    numberofdelegates=201
+    blockrewards=5
+    blockspermin=4
+    totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
+    buffer=1
     url,payaccts,pools=getcoindata(address)
     if (url is None) or (payaccts is None):
         return None
@@ -110,20 +115,22 @@ def getpayoutstats(address,days=35,orderby='paid x approval'):
     payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
     payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/201)*(balance/payoutstats['vote']))
     payoutstats.loc[payoutstats['rank']>201, ['% shared','portion']] = None
-    cols=['count','frequency','amount','Days_Elapsed','paid x approval']
-    for i in cols:
-        payoutstats[i]=payoutstats[i].round(2)
-    payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
     payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
-    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts']
-    payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats = pd.merge(payoutstats,pools,how='left',on='delegate')
     payoutstats=payoutstats.set_index('delegate')
     payoutstats.index.name = None
+    payoutstats['listed % share']=pd.to_numeric(payoutstats['listed % share'])
+    payoutstats['rewards/day']=((balance/payoutstats['vote'])*totalrewardsperday*(1-(payoutstats['listed % share']/100)))
     payoutstats['comments']=''
-    payoutstats.loc[((payoutstats['listed frequency']+(7/payoutstats['listed frequency'])*(50000/balance)<payoutstats['last paid (days)'])&(payoutstats['listed frequency'])>0), ['comments']] = 'payout overdue'
+    cols=['payouts','pay freq (days)','total paid','last paid (days)','paid x approval','rewards/day']
+    for i in cols:
+        payoutstats[i]=payoutstats[i].round(2)
+    payoutstats.loc[(payoutstats['listed frequency']+buffer<payoutstats['last paid (days)'])&(1/payoutstats['rewards/day']+buffer<payoutstats['last paid (days)'])&(payoutstats['listed frequency']>0), ['comments']] = 'payout overdue'
     payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed frequency'])>0), ['comments']] = 'no payouts yet'
     payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
+    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval']
+    payoutstats=payoutstats.drop(dropcols,axis=1)
+    payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
     return payoutstats
 
