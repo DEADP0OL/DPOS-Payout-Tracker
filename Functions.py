@@ -81,10 +81,7 @@ def getpools(file):
     del pools['string']
     return pools
 
-def getpayoutstats(address,days=35,orderby='rewards/day'):
-    numberofdelegates=201
-    blockrewards=5
-    blockspermin=4
+def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspermin=4,orderby='rewards/day'):
     totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
     buffer=1
     url,payaccts,pools=getcoindata(address)
