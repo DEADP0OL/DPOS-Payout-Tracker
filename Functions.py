@@ -83,7 +83,6 @@ def getpools(file):
 
 def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspermin=4,orderby='rewards/day'):
     totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
-    buffer=1
     url,payaccts,pools=getcoindata(address)
     if (url is None) or (payaccts is None):
         return None
@@ -122,7 +121,7 @@ def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspe
     cols=['payouts','pay freq (days)','total paid','last paid (days)','paid x approval','rewards/day']
     for i in cols:
         payoutstats[i]=payoutstats[i].round(2)
-    payoutstats.loc[(payoutstats['listed frequency']+buffer<payoutstats['last paid (days)'])&(1/payoutstats['rewards/day']+buffer<payoutstats['last paid (days)'])&(payoutstats['listed frequency']>0), ['comments']] = 'payout overdue'
+    payoutstats.loc[(payoutstats['listed frequency']*2<payoutstats['last paid (days)'])&(1/payoutstats['rewards/day']+payoutstats['listed frequency']<payoutstats['last paid (days)'])&(payoutstats['listed frequency']>0), ['comments']] = 'payout overdue'
     payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed frequency'])>0), ['comments']] = 'no payouts yet'
     payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
     dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval']
