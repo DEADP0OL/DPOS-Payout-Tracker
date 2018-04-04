@@ -62,6 +62,7 @@ def getcoindata(address):
     else:
         url=None
         payaccts=None
+        pools=None
     if payaccts is not None:
         payaccts={i['address']:i['payaddress'] for i in payaccts}
     return url,payaccts,pools    
@@ -134,12 +135,11 @@ def create_figure(df):
     data=dict(x=x,y=y,desc=desc)
     source = ColumnDataSource(data)
     hover = HoverTool(tooltips=[
-            #("(rank,paid)", "(@x, @y)"),
             ("rank", "@x"),
             ("paid", "@y{0}"),
             ("delegate", "@desc"),
             ])
-    plot=figure(title=None,x_axis_label='rank',y_axis_label='paid', tools=[hover, 'pan', 'wheel_zoom'],plot_width=800, plot_height=300)
+    plot=figure(title=None,x_axis_label='rank',y_axis_label='paid', tools=[hover, 'pan', 'wheel_zoom'],plot_width=600, plot_height=300)
     plot.circle('x','y', size=10,source=source)
     plot.toolbar.active_scroll = plot.select_one(WheelZoomTool)
     return plot
