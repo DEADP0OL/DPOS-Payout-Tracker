@@ -3,6 +3,8 @@ import requests
 import json
 import numpy as np
 import re
+from bokeh.plotting import figure, show, ColumnDataSource
+from bokeh.models import  HoverTool,WheelZoomTool
 
 def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
@@ -78,7 +80,7 @@ def getpools(file):
     del pools['string']
     return pools
 
-def getpayoutstats(address,days=35):
+def getpayoutstats(address,days=35,orderby='paid x approval'):
     url,payaccts,pools=getcoindata(address)
     if (url is None) or (payaccts is None):
         return None
@@ -110,7 +112,7 @@ def getpayoutstats(address,days=35):
     cols=['count','frequency','amount','Days_Elapsed','paid x approval']
     for i in cols:
         payoutstats[i]=payoutstats[i].round(2)
-    payoutstats=payoutstats.sort_values(by='paid x approval',ascending=False)
+    payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
     payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
     dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts']
     payoutstats=payoutstats.drop(dropcols,axis=1)
@@ -123,3 +125,21 @@ def getpayoutstats(address,days=35):
     payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
     return payoutstats
+
+def create_figure(df):
+    df = df.reset_index()
+    x=df['rank'].tolist()
+    y=df['total paid'].tolist()
+    desc=df['index'].tolist()
+    data=dict(x=x,y=y,desc=desc)
+    source = ColumnDataSource(data)
+    hover = HoverTool(tooltips=[
+            #("(rank,paid)", "(@x, @y)"),
+            ("rank", "@x"),
+            ("paid", "@y{0}"),
+            ("delegate", "@desc"),
+            ])
+    plot=figure(title=None,x_axis_label='rank',y_axis_label='paid', tools=[hover, 'pan', 'wheel_zoom'],plot_width=800, plot_height=300)
+    plot.circle('x','y', size=10,source=source)
+    plot.toolbar.active_scroll = plot.select_one(WheelZoomTool)
+    return plot
