@@ -2,8 +2,11 @@
     <head>
        <title>Payout Tracker</title>
        <link href="https://bootswatch.com/4/spacelab/bootstrap.min.css" rel="stylesheet">
+       <link href="http://cdn.pydata.org/bokeh/release/bokeh-0.12.15.min.css" rel="stylesheet" type="text/css">
+       <link href="http://cdn.pydata.org/bokeh/release/bokeh-widgets-0.12.15.min.css" rel="stylesheet" type="text/css">
+       <script src="http://cdn.pydata.org/bokeh/release/bokeh-0.12.15.min.js"></script>
+       <script src="http://cdn.pydata.org/bokeh/release/bokeh-widgets-0.12.15.min.js"></script>
        <meta name="viewport" content = "width=device-width, initial-scale=1.0">
- 
     </head>
     <body>
  
@@ -44,6 +47,10 @@
         {% endfor %}
             {% endif %}
         {% endwith %}
+  <div align="center">
+    {{ script| safe }}
+    {{ div| safe }}
+  </div>
   <div align="center">   
 	{{ show | safe }}
   </div>
