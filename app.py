@@ -16,15 +16,14 @@ class ReusableForm(Form):
  
 @app.route("/", methods=['GET', 'POST'])
 def tracker():
-    form = ReusableForm(request.form)
- 
+    form = ReusableForm(request.form) 
     print (form.errors)
     payoutstats=None
     address=None
     if request.method == 'POST':
         address=request.form['address']
         dayspan=request.form['dayspan']
-        payoutstats=getpayoutstats(address)
+        payoutstats=getpayoutstats(address,int(dayspan))
         if form.validate():
             # Save the comment here.
             flash("Success")
