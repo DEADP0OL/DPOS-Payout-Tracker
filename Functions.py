@@ -140,8 +140,8 @@ def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspe
     dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused','website']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
-    earnedperday = str((payoutstats['total paid'].sum()/days).round(2))+' '+coin
-    expectedearnings = str((payoutstats['rewards/day'].sum()).round(2))+' '+coin
+    earnedperday = str(round(payoutstats['total paid'].sum()/days,2))+' '+coin
+    expectedearnings = str(round(payoutstats['rewards/day'].sum(),2))+' '+coin
     balance=str(round(balance,2))+' '+coin
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
     otherpools=pools.loc[~pools['delegate'].isin(list(payoutstats.index.values))]
