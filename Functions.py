@@ -71,14 +71,18 @@ def getpools(file):
     pools = pools.replace('`','').lower()
     pools = max(pools.split('*'), key=len).split(';')
     pools = pd.DataFrame(pools,columns=['string'])
-    pools['delegate'] = pools['string'].str.extract('^\s*([a-z0-9_.]*)', expand=False)
-    pools['listed % share'] = pools['string'].str.extract('\(*[x]*([0-9.]*)\%', expand=False)
-    pools['listed frequency'] = pools['string'].str.extract('\%-([a-z0-9]*)\,*\)*', expand=False)
-    pools.loc[pools['listed frequency']=='w', ['listed frequency']] = 7
-    pools.loc[pools['listed frequency']=='d', ['listed frequency']] = 1
-    pools.loc[pools['listed frequency']=='2d', ['listed frequency']] = 2
-    pools['listed frequency']=pd.to_numeric(pools['listed frequency'])
-    del pools['string']
+    pools['string'].str.lower()
+    pools = pools['string'].str.extractall(r'^[*]?\s*\-*\s*(?P<delegate>[\w.-]+)?\,*\s*(?P<delegate2>[\w]+)?\,*\s*(?P<delegate3>[\w]+)?\,*\s*(?P<delegate4>[\w]+)?\,*\s*(?P<delegate5>[\w]+)?\,*\s(?P<website>[\w./:-]+)*\s*\(\`*[0-9x]*?(?P<percentage>[0-9.]+)\%\-*(?P<listed_frequency>\w+)*\`*\,*\s*(?:min)?\.*\s*(?:payout)?\s*(?P<min_payout>[0-9.]+)*\s*(?P<coin>\w+)*?\s*(?:payout)?\`*[\w ]*\)$')
+    dropcols=['coin']
+    pools=pools.drop(dropcols,axis=1)
+    pools.loc[pools['listed_frequency']=='w', ['listed_frequency']] = 7
+    pools.loc[pools['listed_frequency']=='d', ['listed_frequency']] = 1
+    pools.loc[pools['listed_frequency']=='2d', ['listed_frequency']] = 2
+    pools['listed_frequency']=pd.to_numeric(pools['listed_frequency'])
+    pools['min_payout']=pd.to_numeric(pools['min_payout'])
+    pools.rename(columns={'percentage': 'listed % share'}, inplace=True)
+    pools=pd.melt(pools, id_vars=['listed % share','listed_frequency','min_payout','website'], var_name='delegatenumber', value_name='delegate')
+    del pools['delegatenumber']
     return pools
 
 def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspermin=4,orderby='rewards/day'):
@@ -106,7 +110,7 @@ def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspe
     payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/100000000
     payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/100000000
     payoutstats['frequency']=pd.to_numeric(payoutstats['frequency'])
-    payoutstats['portion']=((days*5*24*60*4/201)*(balance/payoutstats['vote']))
+    payoutstats['portion']=((days*blockrewards*24*60*blockspermin/numberofdelegates)*(balance/payoutstats['vote']))
     payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
     payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
     payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/201)*(balance/payoutstats['vote']))
@@ -116,15 +120,18 @@ def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspe
     payoutstats=payoutstats.set_index('delegate')
     payoutstats.index.name = None
     payoutstats['listed % share']=pd.to_numeric(payoutstats['listed % share'])
-    payoutstats['rewards/day']=((balance/payoutstats['vote'])*totalrewardsperday*(1-(payoutstats['listed % share']/100)))
+    payoutstats['rewards/day']=((balance/payoutstats['vote'])*totalrewardsperday*(payoutstats['listed % share']/100))
+    payoutstats['minpayused']=1
+    payoutstats.loc[payoutstats['min_payout']>0, ['minpayused']] = payoutstats['min_payout']
+    payoutstats.loc[payoutstats['rank']>201, ['rewards/day']] = np.nan
     payoutstats['comments']=''
     cols=['payouts','pay freq (days)','total paid','last paid (days)','paid x approval','rewards/day']
     for i in cols:
         payoutstats[i]=payoutstats[i].round(2)
-    payoutstats.loc[(payoutstats['listed frequency']*2<payoutstats['last paid (days)'])&(1/payoutstats['rewards/day']+payoutstats['listed frequency']<payoutstats['last paid (days)'])&(payoutstats['listed frequency']>0), ['comments']] = 'payout overdue'
-    payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed frequency'])>0), ['comments']] = 'no payouts yet'
+    payoutstats.loc[(payoutstats['listed_frequency']*2<payoutstats['last paid (days)'])&(payoutstats['minpayused']/payoutstats['rewards/day']+payoutstats['listed_frequency']<payoutstats['last paid (days)'])&(payoutstats['listed_frequency']>0), ['comments']] = 'payout overdue'
+    payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed_frequency'])>0), ['comments']] = 'no payouts yet'
     payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
-    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval']
+    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
@@ -139,10 +146,10 @@ def create_figure(df):
     source = ColumnDataSource(data)
     hover = HoverTool(tooltips=[
             ("rank", "@x"),
-            ("paid", "@y{0}"),
+            ("paid", "@y{0.0}"),
             ("delegate", "@desc"),
             ])
-    plot=figure(title=None,x_axis_label='rank',y_axis_label='paid', tools=[hover,'pan','box_zoom','reset'],plot_width=600, plot_height=300)
+    plot=figure(title=None,x_axis_label='rank',y_axis_label='total paid', tools=[hover,'pan','box_zoom','reset'],plot_width=600, plot_height=300)
     plot.circle('x','y', size=10,source=source)
     plot.toolbar.active_scroll = plot.select_one(WheelZoomTool)
     plot.toolbar.active_drag = plot.select_one(BoxZoomTool)
