@@ -23,7 +23,12 @@ def tracker():
     if request.method == 'POST':
         address=request.form['address']
         dayspan=request.form['dayspan']
-        payoutstats=getpayoutstats(address,int(dayspan))
+        if address=='':
+            address=None
+        if dayspan=='':
+            dayspan=None
+        if address is not None and dayspan is not None:
+            payoutstats,otherpools,payperday,expectedpayperday,balance=getpayoutstats(address,int(dayspan))
         if form.validate():
             flash("Success")
         else:
@@ -37,11 +42,10 @@ def tracker():
             flash('Error: Invalid Address.')
             return render_template('form.html', form=form)
         else:
-            table=payoutstats.to_html(formatters={'percent shared': '{:,.1%}'.format})
+            table=payoutstats.to_html(classes=["table-bordered", "table-striped", "table-hover"])
+            table2=otherpools.to_html(classes=["table-bordered", "table-striped", "table-hover"])
             pscript,pdiv=components(create_figure(payoutstats))
-            print(pscript)
-            print(pdiv)
-            return render_template('tracker.html', form=form,show=table,dayspan=dayspan,address=address,script=pscript,div=pdiv)
+            return render_template('tracker.html', form=form,show=table,show2=table2,dayspan=dayspan,address=address,script=pscript,div=pdiv,earnings=payperday,expectedearnings=expectedpayperday,balance=balance)
 
 if __name__ == "__main__":
     if 'liveconsole' not in gethostname():
