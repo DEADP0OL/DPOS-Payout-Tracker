@@ -25,7 +25,6 @@ def tracker():
         dayspan=request.form['dayspan']
         payoutstats=getpayoutstats(address,int(dayspan))
         if form.validate():
-            # Save the comment here.
             flash("Success")
         else:
             flash('Error: All the form fields are required. ')
