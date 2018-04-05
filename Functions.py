@@ -51,21 +51,22 @@ def getincomingtxs(url,address,days=35):
 def getcoindata(address):
     if address[-3:]=='LWF':
         url='https://wallet.lwf.io/api/'
-        #coin='LWF'
+        coin='LWF'
         payaccts=json.load(open('LWFPayoutAccts.json'))
         pools=getpools('LWFPools.txt')
     elif address[-1:]=='X':
         url='https://wallet.oxycoin.io/api/'
-        #coin='OXY'
+        coin='OXY'
         payaccts=json.load(open('OXYPayoutAccts.json'))
         pools=getpools('OXYPools.txt')
     else:
         url=None
         payaccts=None
         pools=None
+        coin=None
     if payaccts is not None:
         payaccts={i['address']:i['payaddress'] for i in payaccts}
-    return url,payaccts,pools    
+    return url,payaccts,pools,coin    
 def getpools(file):
     pools = open(file, 'r').read()
     pools = pools.replace('`','').lower()
@@ -83,17 +84,21 @@ def getpools(file):
     pools.rename(columns={'percentage': 'listed % share'}, inplace=True)
     pools=pd.melt(pools, id_vars=['listed % share','listed_frequency','min_payout','website'], var_name='delegatenumber', value_name='delegate')
     del pools['delegatenumber']
+    pools=pools.loc[pools['delegate'].notnull()]
+    pools=pools.reset_index(drop=True)
     return pools
 
 def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspermin=4,orderby='rewards/day'):
     totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
-    url,payaccts,pools=getcoindata(address)
+    url,payaccts,pools,coin=getcoindata(address)
     if (url is None) or (payaccts is None):
-        return None
+        return None,None,None,None,None
+    balance=getbalance(url,address)
+    if balance==0:
+        return None,None,None,None,None
     incomingtxs=getincomingtxs(url,address,days)
     votes=getvotes(url,address)
     votes['address']=votes['address'].replace(payaccts)
-    balance=getbalance(url,address)
     txstats=incomingtxs.sort_values(by=['senderId','timestamp'],ascending=False)
     txstats['frequency']=txstats['Days_Elapsed'].diff()
     txstats.loc[txstats['frequency']<0, 'frequency'] = None
@@ -129,13 +134,21 @@ def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspe
     for i in cols:
         payoutstats[i]=payoutstats[i].round(2)
     payoutstats.loc[(payoutstats['listed_frequency']*2<payoutstats['last paid (days)'])&(payoutstats['minpayused']/payoutstats['rewards/day']+payoutstats['listed_frequency']<payoutstats['last paid (days)'])&(payoutstats['listed_frequency']>0), ['comments']] = 'payout overdue'
-    payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed_frequency'])>0), ['comments']] = 'no payouts yet'
+    payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed_frequency'])>0), ['comments']] = 'no payouts'
     payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
-    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused']
+    payoutstats.loc[payoutstats['listed % share'].isnull(), ['comments']] = 'not listed pool'
+    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused','website']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
+    earnedperday = str((payoutstats['total paid'].sum()/days).round(2))+' '+coin
+    expectedearnings = str((payoutstats['rewards/day'].sum()).round(2))+' '+coin
+    balance=str(round(balance,2))+' '+coin
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
-    return payoutstats
+    otherpools=pools.loc[~pools['delegate'].isin(list(payoutstats.index.values))]
+    otherpools = otherpools.replace(np.nan, '', regex=True)
+    otherpools = otherpools.set_index('delegate')
+    otherpools.index.name = None
+    return payoutstats,otherpools,earnedperday,expectedearnings,balance
 
 def create_figure(df):
     df = df.reset_index()
