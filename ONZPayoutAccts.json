@@ -1,2 +1,12 @@
 [
+	{"delegate":"dutch_pool","payoutacct":"dutch_pool_payout",
+	"address":"ONZkL6Jm1MKGWnVzMzkJ8jwTxbQ8Cudqh1Hw","payaddress":"ONZgVxKiz5iRGM4hnQodg7wqSDR734icqMiV"},
+	{"delegate":"thamar","payoutacct":"dutch_pool_payout",
+	"address":"ONZfs8NyyitQ1ospuuHmF3BHUYGggeYkDptw","payaddress":"ONZgVxKiz5iRGM4hnQodg7wqSDR734icqMiV"},
+	{"delegate":"st3v3n","payoutacct":"dutch_pool_payout",
+	"address":"ONZg9qYuxeEV9eLmybfj8K9TdBU1byBMZ7w4","payaddress":"ONZgVxKiz5iRGM4hnQodg7wqSDR734icqMiV"},
+	{"delegate":"kippers","payoutacct":"dutch_pool_payout",
+	"address":"ONZfmgNKedjhUD51UqGf24T7PcqbUyy8AKck","payaddress":"ONZgVxKiz5iRGM4hnQodg7wqSDR734icqMiV"},
+	{"delegate":"fnoufnou","payoutacct":"dutch_pool_payout",
+	"address":"ONZgE9vV3tgaUw9LUiM5YTNgJ3qsZdF2SWVv","payaddress":"ONZgVxKiz5iRGM4hnQodg7wqSDR734icqMiV"}
 ]
