@@ -10,8 +10,8 @@ def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
     return pubkey
 
-def getbalance(url,address):
-    balance = float(requests.get(url+'accounts/getBalance?address='+address).json()['balance'])/100000000
+def getbalance(url,address,multiplier=100000000):
+    balance = float(requests.get(url+'accounts/getBalance?address='+address).json()['balance'])/multiplier
     return balance
 
 def getvotes(url,address):
@@ -23,9 +23,24 @@ def getvoters(url,address):
     voters = pd.DataFrame(requests.get(url+'delegates/voters?publicKey='+pubkey).json()['accounts'])
     return voters
 
-def getdelegates(url):
-    delegates = pd.DataFrame(requests.get(url+'delegates?orderBy=vote').json()['delegates'])
-    delegates['vote']=pd.to_numeric(delegates['vote'])
+def getdelegates(url,minapproval=1,multiplier=100000000):
+    i=0
+    delegates = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)+'&orderBy=vote').json()['delegates'])
+    delegates['vote']=pd.to_numeric(delegates['vote'])/multiplier
+    delegates['approval']=pd.to_numeric(delegates['approval'])
+    approval = delegates['approval'].iloc[-1]
+    length = len(delegates)
+    while approval>=minapproval:
+        i=i+length
+        delegates1 = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)+'&orderBy=vote').json()['delegates'])
+        if not delegates1.empty:
+            delegates1['vote']=pd.to_numeric(delegates1['vote'])/multiplier
+            delegates1['approval']=pd.to_numeric(delegates1['approval'])
+            approval = delegates1['approval'].iloc[-1]
+            delegates=delegates.append(delegates1,ignore_index=True)
+        else:
+            approval = 0
+    delegates=delegates.loc[delegates['approval']>=minapproval]
     return delegates
 
 def getincomingtxs(url,address,days=35):
@@ -57,6 +72,7 @@ def getcoindata(address):
         numdelegates=201
         blockrewards=5
         blockspermin=4
+        multiplier=100000000
     elif address[-1:]=='X':
         url='https://wallet.oxycoin.io/api/'
         coin='OXY'
@@ -65,6 +81,7 @@ def getcoindata(address):
         numdelegates=201
         blockrewards=5
         blockspermin=4
+        multiplier=100000000
     elif address[:3]=='ONZ':
         url='https://node06.onzcoin.com/api/'
         coin='ONZ'
@@ -73,6 +90,7 @@ def getcoindata(address):
         numdelegates=101
         blockrewards=50
         blockspermin=4
+        multiplier=100000000
     else:
         url=None
         payaccts=None
@@ -80,7 +98,8 @@ def getcoindata(address):
         coin=None
     if payaccts is not None:
         payaccts={i['address']:i['payaddress'] for i in payaccts}
-    return url,payaccts,pools,coin,numdelegates,blockrewards,blockspermin
+    return url,payaccts,pools,coin,numdelegates,blockrewards,blockspermin,multiplier
+
 def getpools(file):
     pools = open(file, 'r').read()
     pools = pools.replace('`','').lower()
@@ -88,7 +107,6 @@ def getpools(file):
     pools = pd.DataFrame(pools,columns=['string'])
     pools['string'].str.lower()
     pools = pools['string'].str.extractall(r'^[*]?\s*\-*\s*(?P<delegate>[\w.-]+)?\,*\s*(?P<delegate2>[\w]+)?\,*\s*(?P<delegate3>[\w]+)?\,*\s*(?P<delegate4>[\w]+)?\,*\s*(?P<delegate5>[\w]+)?\,*\s(?P<website>[\w./:-]+)*\s*\(\`*[0-9x]*?(?P<percentage>[0-9.]+)\%\-*(?P<listed_frequency>\w+)*\`*\,*\s*(?:min)?\.*\s*(?:payout)?\s*(?P<min_payout>[0-9.]+)*\s*(?P<coin>\w+)*?\s*(?:payout)?\`*[\w ]*\).*?$')
-    print(pools)
     dropcols=['coin']
     pools=pools.drop(dropcols,axis=1)
     pools.loc[pools['listed_frequency']=='2d', ['listed_frequency']] = 2
@@ -105,8 +123,27 @@ def getpools(file):
     pools=pools.sort_values(by='listed % share',ascending=False)
     return pools
 
+def getpoolstats(pools,delegates,numdelegates,blockrewards,blockspermin,balance=10000):
+    delegates=delegates[['username','rank','vote']]
+    totalrewardsperday=blockrewards*blockspermin*60*24/numdelegates
+    poolstats=pd.merge(pools,delegates,how='left',left_on='delegate',right_on='username')
+    poolstats['rewards/day']=((balance/poolstats['vote'])*totalrewardsperday*(poolstats['listed % share']/100)).round(2)
+    poolstats=poolstats.sort_values(by='rewards/day',ascending=False)
+    del poolstats['username']
+    poolstats=poolstats[poolstats['vote']>=0]
+    poolstats['rank']=poolstats['rank'].astype('int64')
+    poolstats['listed % share']=poolstats['listed % share'].astype('int64')
+    del poolstats['vote']
+    cols = list(poolstats)
+    cols.insert(0, cols.pop(cols.index('rank')))
+    poolstats = poolstats.ix[:, cols]
+    poolstats['comments']=''
+    poolstats.loc[poolstats['rank']>numdelegates, ['rewards/day']] = np.nan
+    poolstats.loc[poolstats['rank']>numdelegates, ['comments']] = 'not forging'
+    return poolstats
+
 def getpayoutstats(address,days=35,orderby='rewards/day'):
-    url,payaccts,pools,coin,numberofdelegates,blockrewards,blockspermin=getcoindata(address)
+    url,payaccts,pools,coin,numberofdelegates,blockrewards,blockspermin,multiplier=getcoindata(address)
     if (url is None) or (payaccts is None):
         return None,None,None,None,None
     balance=getbalance(url,address)
@@ -126,45 +163,48 @@ def getpayoutstats(address,days=35,orderby='rewards/day'):
     payoutstats=pd.merge(votes,txstats,how='left',left_on='address',right_on='senderId')
     payoutstats['vote count'] = payoutstats.groupby('senderId')['senderId'].transform('count')
     payoutstats['total approval'] = payoutstats.groupby('senderId')['approval'].transform('sum')
-    payoutstats['amount']=pd.to_numeric(payoutstats['amount'])/100000000
+    payoutstats['amount']=pd.to_numeric(payoutstats['amount'])/multiplier
     payoutstats['amount']=payoutstats['amount']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
     payoutstats['payments']=payoutstats['payments']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
-    payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/100000000
-    payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/100000000
+    payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/multiplier
+    payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/multiplier
     payoutstats['frequency']=pd.to_numeric(payoutstats['frequency'])
     payoutstats['portion']=((days*blockrewards*24*60*blockspermin/numberofdelegates)*(balance/payoutstats['vote']))
     payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
     payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
-    payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/201)*(balance/payoutstats['vote']))
-    payoutstats.loc[payoutstats['rank']>201, ['% shared','portion']] = None
+    payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/numberofdelegates)*(balance/payoutstats['vote']))
+    payoutstats.loc[payoutstats['rank']>numberofdelegates, ['% shared','portion']] = None
     payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
     payoutstats = pd.merge(payoutstats,pools,how='left',on='delegate')
     payoutstats=payoutstats.set_index('delegate')
     payoutstats.index.name = None
     payoutstats['listed % share']=pd.to_numeric(payoutstats['listed % share'])
     payoutstats['rewards/day']=((balance/payoutstats['vote'])*totalrewardsperday*(payoutstats['listed % share']/100))
-    payoutstats['minpayused']=1
-    payoutstats.loc[payoutstats['min_payout']>0, ['minpayused']] = payoutstats['min_payout']
-    payoutstats.loc[payoutstats['rank']>201, ['rewards/day']] = np.nan
+    payoutstats['minpayused']=payoutstats['min_payout']
+    payoutstats.loc[payoutstats['minpayused'].isnull(), ['minpayused']] = 1
+    payoutstats.loc[payoutstats['rank']>numberofdelegates, ['rewards/day']] = np.nan
     payoutstats['comments']=''
     cols=['payouts','pay freq (days)','total paid','last paid (days)','paid x approval','rewards/day']
     for i in cols:
         payoutstats[i]=payoutstats[i].round(2)
     payoutstats.loc[(payoutstats['listed_frequency']*2<payoutstats['last paid (days)'])&(payoutstats['minpayused']/payoutstats['rewards/day']+payoutstats['listed_frequency']<payoutstats['last paid (days)'])&(payoutstats['listed_frequency']>0), ['comments']] = 'payout overdue'
     payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed_frequency'])>0), ['comments']] = 'no payouts'
-    payoutstats.loc[payoutstats['rank']>201, ['comments']] = 'not forging'
+    payoutstats.loc[payoutstats['rank']>numberofdelegates, ['comments']] = 'not forging'
     payoutstats.loc[payoutstats['listed % share'].isnull(), ['comments']] = 'not listed pool'
     dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused','website']
     payoutstats=payoutstats.drop(dropcols,axis=1)
     payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
+    delegates=getdelegates(url,.1,multiplier)
+    poolstats=getpoolstats(pools,delegates,numberofdelegates,blockrewards,blockspermin,balance)
     earnedperday = str(round(payoutstats['total paid'].sum()/days,2))+' '+coin
     expectedearnings = str(round(payoutstats['rewards/day'].sum(),2))+' '+coin
     balance=str(round(balance,2))+' '+coin
     payoutstats = payoutstats.replace(np.nan, '', regex=True)
-    otherpools=pools.loc[~pools['delegate'].isin(list(payoutstats.index.values))]
+    otherpools=poolstats.loc[~poolstats['delegate'].isin(list(payoutstats.index.values))]
     otherpools = otherpools.replace(np.nan, '', regex=True)
     otherpools = otherpools.set_index('delegate')
     otherpools.index.name = None
+
     return payoutstats,otherpools,earnedperday,expectedearnings,balance
 
 def create_figure(df):
