@@ -1,15 +1,17 @@
 <html>
     <head>
         <title>Payout Tracker</title>
+        <link rel="icon" href="static/deadpool.png">
         <link href="https://bootswatch.com/4/materia/bootstrap.min.css" rel="stylesheet">
         <meta name="viewport" content = "width=device-width, initial-scale=1.0">
     </head>
     <body> 
         <div class="container">
             <div align="center"> 
-                <h1>Payout Tracker</h1>
-                <h6>Only LWF and OXY are Currently Supported</h6>
-                <h6>Message Deadpool in Slack with Any Issues</h6>
+                <h1>DPoS Payout Tracker</h1>
+                <h5>ONZ, LWF, and OXY are Currently Supported</h5>
+                <h6>Enter a wallet address and timespan of interest to view payout metrics</h6>
+                <br>
             </div>
             <form  action="" method="post" role="form">
                 {{ form.csrf }}
@@ -32,7 +34,8 @@
             </form>
         </div>
         <br>
-        <div class="container">
+        <div class="container" align="center">
+            <h5>Message Deadpool in Slack with Any Issues</h5>
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for message in messages %}
