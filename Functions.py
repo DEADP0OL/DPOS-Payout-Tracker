@@ -54,11 +54,25 @@ def getcoindata(address):
         coin='LWF'
         payaccts=json.load(open('LWFPayoutAccts.json'))
         pools=getpools('LWFPools.txt')
+        numdelegates=201
+        blockrewards=5
+        blockspermin=4
     elif address[-1:]=='X':
         url='https://wallet.oxycoin.io/api/'
         coin='OXY'
         payaccts=json.load(open('OXYPayoutAccts.json'))
         pools=getpools('OXYPools.txt')
+        numdelegates=201
+        blockrewards=5
+        blockspermin=4
+    elif address[:3]=='ONZ':
+        url='https://node06.onzcoin.com/api/'
+        coin='ONZ'
+        payaccts=json.load(open('ONZPayoutAccts.json'))
+        pools=getpools('ONZPools.txt')
+        numdelegates=101
+        blockrewards=50
+        blockspermin=4
     else:
         url=None
         payaccts=None
@@ -66,19 +80,20 @@ def getcoindata(address):
         coin=None
     if payaccts is not None:
         payaccts={i['address']:i['payaddress'] for i in payaccts}
-    return url,payaccts,pools,coin    
+    return url,payaccts,pools,coin,numdelegates,blockrewards,blockspermin
 def getpools(file):
     pools = open(file, 'r').read()
     pools = pools.replace('`','').lower()
     pools = max(pools.split('*'), key=len).split(';')
     pools = pd.DataFrame(pools,columns=['string'])
     pools['string'].str.lower()
-    pools = pools['string'].str.extractall(r'^[*]?\s*\-*\s*(?P<delegate>[\w.-]+)?\,*\s*(?P<delegate2>[\w]+)?\,*\s*(?P<delegate3>[\w]+)?\,*\s*(?P<delegate4>[\w]+)?\,*\s*(?P<delegate5>[\w]+)?\,*\s(?P<website>[\w./:-]+)*\s*\(\`*[0-9x]*?(?P<percentage>[0-9.]+)\%\-*(?P<listed_frequency>\w+)*\`*\,*\s*(?:min)?\.*\s*(?:payout)?\s*(?P<min_payout>[0-9.]+)*\s*(?P<coin>\w+)*?\s*(?:payout)?\`*[\w ]*\)$')
+    pools = pools['string'].str.extractall(r'^[*]?\s*\-*\s*(?P<delegate>[\w.-]+)?\,*\s*(?P<delegate2>[\w]+)?\,*\s*(?P<delegate3>[\w]+)?\,*\s*(?P<delegate4>[\w]+)?\,*\s*(?P<delegate5>[\w]+)?\,*\s(?P<website>[\w./:-]+)*\s*\(\`*[0-9x]*?(?P<percentage>[0-9.]+)\%\-*(?P<listed_frequency>\w+)*\`*\,*\s*(?:min)?\.*\s*(?:payout)?\s*(?P<min_payout>[0-9.]+)*\s*(?P<coin>\w+)*?\s*(?:payout)?\`*[\w ]*\).*?$')
+    print(pools)
     dropcols=['coin']
     pools=pools.drop(dropcols,axis=1)
+    pools.loc[pools['listed_frequency']=='2d', ['listed_frequency']] = 2
     pools.loc[pools['listed_frequency']=='w', ['listed_frequency']] = 7
     pools.loc[pools['listed_frequency']=='d', ['listed_frequency']] = 1
-    pools.loc[pools['listed_frequency']=='2d', ['listed_frequency']] = 2
     pools['listed_frequency']=pd.to_numeric(pools['listed_frequency'])
     pools['min_payout']=pd.to_numeric(pools['min_payout'])
     pools.rename(columns={'percentage': 'listed % share'}, inplace=True)
@@ -86,16 +101,18 @@ def getpools(file):
     del pools['delegatenumber']
     pools=pools.loc[pools['delegate'].notnull()]
     pools=pools.reset_index(drop=True)
+    pools['listed % share']=pd.to_numeric(pools['listed % share'])
+    pools=pools.sort_values(by='listed % share',ascending=False)
     return pools
 
-def getpayoutstats(address,days=35,numberofdelegates=201,blockrewards=5,blockspermin=4,orderby='rewards/day'):
-    totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
-    url,payaccts,pools,coin=getcoindata(address)
+def getpayoutstats(address,days=35,orderby='rewards/day'):
+    url,payaccts,pools,coin,numberofdelegates,blockrewards,blockspermin=getcoindata(address)
     if (url is None) or (payaccts is None):
         return None,None,None,None,None
     balance=getbalance(url,address)
     if balance==0:
         return None,None,None,None,None
+    totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
     incomingtxs=getincomingtxs(url,address,days)
     votes=getvotes(url,address)
     votes['address']=votes['address'].replace(payaccts)
@@ -162,7 +179,7 @@ def create_figure(df):
             ("paid", "@y{0.0}"),
             ("delegate", "@desc"),
             ])
-    plot=figure(title=None,x_axis_label='rank',y_axis_label='total paid', tools=[hover,'pan','box_zoom','reset'],plot_width=600, plot_height=300)
+    plot=figure(title=None,x_axis_label='rank',y_axis_label='total paid',tools=[hover,'pan','box_zoom','reset'],plot_width=600, plot_height=300)
     plot.circle('x','y', size=10,source=source)
     plot.toolbar.active_scroll = plot.select_one(WheelZoomTool)
     plot.toolbar.active_drag = plot.select_one(BoxZoomTool)
