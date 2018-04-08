@@ -106,9 +106,10 @@ def getpools(file):
     pools = max(pools.split('*'), key=len).split(';')
     pools = pd.DataFrame(pools,columns=['string'])
     pools['string'].str.lower()
-    pools = pools['string'].str.extractall(r'^[*]?\s*\-*\s*(?P<delegate>[\w.-]+)?\,*\s*(?P<delegate2>[\w]+)?\,*\s*(?P<delegate3>[\w]+)?\,*\s*(?P<delegate4>[\w]+)?\,*\s*(?P<delegate5>[\w]+)?\,*\s(?P<website>[\w./:-]+)*\s*\(\`*[0-9x]*?(?P<percentage>[0-9.]+)\%\-*(?P<listed_frequency>\w+)*\`*\,*\s*(?:min)?\.*\s*(?:payout)?\s*(?P<min_payout>[0-9.]+)*\s*(?P<coin>\w+)*?\s*(?:payout)?\`*[\w ]*\).*?$')
+    pools = pools['string'].str.extractall(r'^[*]?\s*\-*\s*(?P<delegate>[\w.-]+)?\,*\s*(?P<delegate2>[\w]+)?\,*\s*(?P<delegate3>[\w]+)?\,*\s*(?P<delegate4>[\w]+)?\,*\s*(?P<delegate5>[\w]+)?\,*\s(?P<website>[\w./:-]+)*\s*\(\`*[0-9x]*?(?P<percentage>[0-9.]+)\%\s*\-*(?P<listed_frequency>\w+)*\`*\,*\s*(?:min)?\.*\s*(?:payout)?\s*(?P<min_payout>[0-9.]+)*\s*(?P<coin>\w+)*?\s*(?:payout)?\`*[\w ]*\).*?$')
     dropcols=['coin']
     pools=pools.drop(dropcols,axis=1)
+    pools.loc[pools['listed_frequency']=='c', ['listed_frequency']] = np.nan
     pools.loc[pools['listed_frequency']=='2d', ['listed_frequency']] = 2
     pools.loc[pools['listed_frequency']=='w', ['listed_frequency']] = 7
     pools.loc[pools['listed_frequency']=='d', ['listed_frequency']] = 1
