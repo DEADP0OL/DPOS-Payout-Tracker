@@ -5,13 +5,19 @@ import numpy as np
 import re
 from bokeh.plotting import figure, show, ColumnDataSource
 from bokeh.models import  HoverTool, WheelZoomTool, BoxZoomTool, ResetTool
+from bokeh.transform import linear_cmap
+from bokeh.palettes import RdYlGn
 
 def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
     return pubkey
 
 def getbalance(url,address,multiplier=100000000):
-    balance = float(requests.get(url+'accounts/getBalance?address='+address).json()['balance'])/multiplier
+    balance = requests.get(url+'accounts/getBalance?address='+address).json()['balance']
+    try:
+        balance = float(balance)/multiplier
+    except:
+        pass
     return balance
 
 def getvotes(url,address):
@@ -62,6 +68,39 @@ def getincomingtxs(url,address,days=35):
             last = days+1
     incomingtxs=incomingtxs[incomingtxs['Days_Elapsed']<=days]
     return incomingtxs
+
+def getvotetxs(url,days=35):
+    i=0
+    votetxs = pd.DataFrame(requests.get(url+'transactions?type=3&offset='+str(i)+'&orderBy=timestamp:desc').json()['transactions'])
+    votetxs.sort_values(by='timestamp',ascending=False)
+    now = votetxs['timestamp'].iloc[0]
+    votetxs['Days_Elapsed']=(now-votetxs['timestamp'])/(24*60*60)
+    last = votetxs['Days_Elapsed'].iloc[-1]
+    length = len(votetxs)
+    while last <= days:
+        i=i+length
+        votetxs1 = pd.DataFrame(requests.get(url+'transactions?type=3&offset='+str(i)+'&orderBy=timestamp:desc').json()['transactions'])
+        if not votetxs1.empty:
+            votetxs1['Days_Elapsed']=(now-votetxs1['timestamp'])/(24*60*60)
+            votetxs=votetxs.append(votetxs1,ignore_index=True)
+            last = votetxs['Days_Elapsed'].iloc[-1]
+        else:
+            last = days+1
+    votetxs=votetxs.loc[votetxs['Days_Elapsed']<=days]
+    return votetxs
+
+def getoutgoingvotes(url,address,days=35):
+    votetxs=getvotetxs(url,days)
+    votes=getvotes(url,address)
+    outgoingvotes=votetxs.loc[votetxs['senderId']==address]
+    outgoingvotes['added']=""
+    outgoingvotes['removed']=""
+    votes['days_voted']=days
+    for index,row in outgoingvotes.iterrows():
+        id=row['id']
+        vote=pd.DataFrame(requests.get(url+'transactions/get?id='+str(id)).json())['transaction']['votes']
+        votes.loc[votes['publicKey'].isin(vote.get("added")),['days_voted']]=np.minimum(votes['days_voted'],row['Days_Elapsed'])
+    return votes
 
 def getcoindata(address):
     if address[-3:]=='LWF':
@@ -144,84 +183,94 @@ def getpoolstats(pools,delegates,numdelegates,blockrewards,blockspermin,balance=
     return poolstats
 
 def getpayoutstats(address,days=35,orderby='rewards/day'):
-    url,payaccts,pools,coin,numberofdelegates,blockrewards,blockspermin,multiplier=getcoindata(address)
-    if (url is None) or (payaccts is None):
+    try:
+        url,payaccts,pools,coin,numberofdelegates,blockrewards,blockspermin,multiplier=getcoindata(address)
+        balance=getbalance(url,address)
+        totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
+        incomingtxs=getincomingtxs(url,address,days)
+        votes=getoutgoingvotes(url,address,days)
+        votes['address']=votes['address'].replace(payaccts)
+        txstats=incomingtxs.sort_values(by=['senderId','timestamp'],ascending=False)
+        txstats['frequency']=txstats['Days_Elapsed'].diff()
+        txstats.loc[txstats['frequency']<0, 'frequency'] = None
+        txstats['count']=1
+        txstats['payments']=txstats['amount']
+        txstats=txstats.groupby('senderId').agg({'Days_Elapsed':'first','frequency':'mean','amount':'sum','payments':'mean','count':'count'}).reset_index()
+        txstats=txstats[txstats['amount']>0]
+        payoutstats=pd.merge(votes,txstats,how='left',left_on='address',right_on='senderId')
+        payoutstats['vote count'] = payoutstats.groupby('senderId')['senderId'].transform('count')
+        payoutstats['total approval'] = payoutstats.groupby('senderId')['approval'].transform('sum')
+        payoutstats['amount']=pd.to_numeric(payoutstats['amount'])/multiplier
+        payoutstats['amount']=payoutstats['amount']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
+        payoutstats['payments']=payoutstats['payments']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
+        payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/multiplier
+        payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/multiplier
+        payoutstats['frequency']=pd.to_numeric(payoutstats['frequency'])
+        payoutstats['portion']=((days*blockrewards*24*60*blockspermin/numberofdelegates)*(balance/payoutstats['vote']))
+        payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
+        payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
+        payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/numberofdelegates)*(balance/payoutstats['vote']))
+        payoutstats.loc[payoutstats['rank']>numberofdelegates, ['% shared','portion']] = None
+        payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
+        payoutstats = pd.merge(payoutstats,pools,how='left',on='delegate')
+        payoutstats=payoutstats.set_index('delegate')
+        payoutstats.index.name = None
+        payoutstats['listed % share']=pd.to_numeric(payoutstats['listed % share'])
+        payoutstats['rewards/day']=((balance/payoutstats['vote'])*totalrewardsperday*(payoutstats['listed % share']/100))
+        payoutstats['minpayused']=payoutstats['min_payout']
+        payoutstats.loc[payoutstats['minpayused'].isnull(), ['minpayused']] = 1
+        payoutstats.loc[payoutstats['rank']>numberofdelegates, ['rewards/day']] = np.nan
+        payoutstats['comments']=''
+        cols=['payouts','pay freq (days)','total paid','last paid (days)','paid x approval','rewards/day']
+        for i in cols:
+            payoutstats[i]=payoutstats[i].round(2)
+        payoutstats.loc[(payoutstats['listed_frequency']*2<payoutstats['last paid (days)'])&(payoutstats['minpayused']/payoutstats['rewards/day']+payoutstats['listed_frequency']<payoutstats['last paid (days)'])&(payoutstats['listed_frequency']>0), ['comments']] = 'payout overdue'
+        payoutstats.loc[(payoutstats['last paid (days)'].isnull())&((payoutstats['listed_frequency'])>0), ['comments']] = 'no payouts'
+        payoutstats.loc[(payoutstats['last paid (days)'].isnull())&((payoutstats['minpayused']/payoutstats['rewards/day']>np.maximum(payoutstats['listed_frequency'],payoutstats['days_voted']))), ['comments']] = 'min pay not met'
+        payoutstats.loc[(payoutstats['comments']=='no payouts')&(payoutstats['listed_frequency']>payoutstats['days_voted']), ['comments']] = 'recently voted'
+        payoutstats.loc[payoutstats['rank']>numberofdelegates, ['comments']] = 'not forging'
+        payoutstats.loc[payoutstats['listed % share'].isnull(), ['comments']] = 'not listed pool'
+        payoutstats['total paid']=(payoutstats['total paid']/payoutstats['days_voted']).round(2)
+        dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused','website','days_voted']
+        payoutstats=payoutstats.drop(dropcols,axis=1)
+        payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
+        delegates=getdelegates(url,.1,multiplier)
+        poolstats=getpoolstats(pools,delegates,numberofdelegates,blockrewards,blockspermin,balance)
+        earnedperday = "{:,}".format(round(payoutstats['total paid'].sum(),2))+" "+coin       
+        expectedearnings = "{:,}".format(round(payoutstats['rewards/day'].sum(),2))+' '+coin
+        if (balance>0)and(round(payoutstats['total paid'].sum(),2)>0)and(round(payoutstats['rewards/day'].sum(),2)>0):
+            earnedperday = earnedperday+" ("+str(round(payoutstats['total paid'].sum()*365*100/balance,2))+"%/yr)"
+            expectedearnings = expectedearnings+" ("+str(round(payoutstats['rewards/day'].sum()*365*100/balance,2))+"%/yr)"
+        balance="{:,}".format(round(balance,2))+" "+coin
+        payoutstats = payoutstats.replace(np.nan, '', regex=True)
+        payoutstats.rename(columns={'total paid': 'act pay/day', 'rewards/day': 'exp pay/day'}, inplace=True)
+        otherpools=poolstats.loc[~poolstats['delegate'].isin(list(payoutstats.index.values))]
+        otherpools = otherpools.replace(np.nan, '', regex=True)
+        otherpools = otherpools.set_index('delegate')
+        otherpools.rename(columns={'rewards/day': 'exp pay/day'}, inplace=True)
+        otherpools.index.name = None
+    except:
         return None,None,None,None,None
-    balance=getbalance(url,address)
-    if balance==0:
-        return None,None,None,None,None
-    totalrewardsperday=blockrewards*blockspermin*60*24/numberofdelegates
-    incomingtxs=getincomingtxs(url,address,days)
-    votes=getvotes(url,address)
-    votes['address']=votes['address'].replace(payaccts)
-    txstats=incomingtxs.sort_values(by=['senderId','timestamp'],ascending=False)
-    txstats['frequency']=txstats['Days_Elapsed'].diff()
-    txstats.loc[txstats['frequency']<0, 'frequency'] = None
-    txstats['count']=1
-    txstats['payments']=txstats['amount']
-    txstats=txstats.groupby('senderId').agg({'Days_Elapsed':'first','frequency':'mean','amount':'sum','payments':'mean','count':'count'}).reset_index()
-    txstats=txstats[txstats['amount']>0]
-    payoutstats=pd.merge(votes,txstats,how='left',left_on='address',right_on='senderId')
-    payoutstats['vote count'] = payoutstats.groupby('senderId')['senderId'].transform('count')
-    payoutstats['total approval'] = payoutstats.groupby('senderId')['approval'].transform('sum')
-    payoutstats['amount']=pd.to_numeric(payoutstats['amount'])/multiplier
-    payoutstats['amount']=payoutstats['amount']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
-    payoutstats['payments']=payoutstats['payments']*payoutstats['total approval']/(payoutstats['approval']*payoutstats['vote count'])/payoutstats['vote count']
-    payoutstats['vote']=pd.to_numeric(payoutstats['vote'])/multiplier
-    payoutstats['payments']=pd.to_numeric(payoutstats['payments'])/multiplier
-    payoutstats['frequency']=pd.to_numeric(payoutstats['frequency'])
-    payoutstats['portion']=((days*blockrewards*24*60*blockspermin/numberofdelegates)*(balance/payoutstats['vote']))
-    payoutstats['% shared']=payoutstats['amount']/payoutstats['portion']
-    payoutstats['paid x approval']=payoutstats['amount']*payoutstats['approval']/100
-    payoutstats.loc[payoutstats['count']>1,'% shared'] = payoutstats['payments']/((payoutstats['frequency']*5*24*60*4/numberofdelegates)*(balance/payoutstats['vote']))
-    payoutstats.loc[payoutstats['rank']>numberofdelegates, ['% shared','portion']] = None
-    payoutstats.rename(columns={'username': 'delegate', 'Days_Elapsed': 'last paid (days)','amount':'total paid','count':'payouts','frequency':'pay freq (days)','% shared':'percent shared'}, inplace=True)
-    payoutstats = pd.merge(payoutstats,pools,how='left',on='delegate')
-    payoutstats=payoutstats.set_index('delegate')
-    payoutstats.index.name = None
-    payoutstats['listed % share']=pd.to_numeric(payoutstats['listed % share'])
-    payoutstats['rewards/day']=((balance/payoutstats['vote'])*totalrewardsperday*(payoutstats['listed % share']/100))
-    payoutstats['minpayused']=payoutstats['min_payout']
-    payoutstats.loc[payoutstats['minpayused'].isnull(), ['minpayused']] = 1
-    payoutstats.loc[payoutstats['rank']>numberofdelegates, ['rewards/day']] = np.nan
-    payoutstats['comments']=''
-    cols=['payouts','pay freq (days)','total paid','last paid (days)','paid x approval','rewards/day']
-    for i in cols:
-        payoutstats[i]=payoutstats[i].round(2)
-    payoutstats.loc[(payoutstats['listed_frequency']*2<payoutstats['last paid (days)'])&(payoutstats['minpayused']/payoutstats['rewards/day']+payoutstats['listed_frequency']<payoutstats['last paid (days)'])&(payoutstats['listed_frequency']>0), ['comments']] = 'payout overdue'
-    payoutstats.loc[(payoutstats['last paid (days)'].isnull()&(payoutstats['listed_frequency'])>0), ['comments']] = 'no payouts'
-    payoutstats.loc[payoutstats['rank']>numberofdelegates, ['comments']] = 'not forging'
-    payoutstats.loc[payoutstats['listed % share'].isnull(), ['comments']] = 'not listed pool'
-    dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused','website']
-    payoutstats=payoutstats.drop(dropcols,axis=1)
-    payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
-    delegates=getdelegates(url,.1,multiplier)
-    poolstats=getpoolstats(pools,delegates,numberofdelegates,blockrewards,blockspermin,balance)
-    earnedperday = str(round(payoutstats['total paid'].sum()/days,2))+' '+coin
-    expectedearnings = str(round(payoutstats['rewards/day'].sum(),2))+' '+coin
-    balance=str(round(balance,2))+' '+coin
-    payoutstats = payoutstats.replace(np.nan, '', regex=True)
-    otherpools=poolstats.loc[~poolstats['delegate'].isin(list(payoutstats.index.values))]
-    otherpools = otherpools.replace(np.nan, '', regex=True)
-    otherpools = otherpools.set_index('delegate')
-    otherpools.index.name = None
-
     return payoutstats,otherpools,earnedperday,expectedearnings,balance
 
 def create_figure(df):
     df = df.reset_index()
+    factor=1.25
+    bias=.15
     x=df['rank'].tolist()
-    y=df['total paid'].tolist()
+    y=df['act pay/day'].tolist()
+    avg=pd.to_numeric(df['exp pay/day']).mean()
+    y2=((pd.to_numeric(df['exp pay/day'])-pd.to_numeric(df['act pay/day']).fillna(0))).tolist()
     desc=df['index'].tolist()
-    data=dict(x=x,y=y,desc=desc)
+    data=dict(x=x,y=y,desc=desc,y2=y2)
     source = ColumnDataSource(data)
     hover = HoverTool(tooltips=[
             ("rank", "@x"),
-            ("paid", "@y{0.0}"),
+            ("pay/day", "@y{0.0}"),
             ("delegate", "@desc"),
             ])
-    plot=figure(title=None,x_axis_label='rank',y_axis_label='total paid',tools=[hover,'pan','box_zoom','reset'],plot_width=600, plot_height=300)
-    plot.circle('x','y', size=10,source=source)
+    plot=figure(title=None,x_axis_label='rank',y_axis_label='actual pay per day',tools=[hover,'pan','box_zoom','reset'],plot_width=700, plot_height=300)
+    plot.circle('x','y', size=12,source=source,fill_color=linear_cmap('y2', ['darkgreen','green','blue','red','darkred' ], -avg*factor-bias, avg*factor+bias),fill_alpha=0.6,line_color=None)
     plot.toolbar.active_scroll = plot.select_one(WheelZoomTool)
     plot.toolbar.active_drag = plot.select_one(BoxZoomTool)
     return plot
