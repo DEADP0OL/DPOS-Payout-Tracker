@@ -6,7 +6,6 @@ import re
 from bokeh.plotting import figure, show, ColumnDataSource
 from bokeh.models import  HoverTool, WheelZoomTool, BoxZoomTool, ResetTool
 from bokeh.transform import linear_cmap
-from bokeh.palettes import RdYlGn
 
 def getpubkey(url,address):
     pubkey = requests.get(url+'accounts/getPublicKey?address='+address).json()['publicKey']
@@ -255,18 +254,22 @@ def getpayoutstats(address,days=35,orderby='rewards/day'):
 
 def create_figure(df):
     df = df.reset_index()
-    factor=1.25
+    factor=1
     bias=.15
     x=df['rank'].tolist()
     y=df['act pay/day'].tolist()
     avg=pd.to_numeric(df['exp pay/day']).mean()
     y2=((pd.to_numeric(df['exp pay/day'])-pd.to_numeric(df['act pay/day']).fillna(0))).tolist()
+    exppay=df['exp pay/day'].tolist()
+    sharing=df['listed % share'].tolist()
     desc=df['index'].tolist()
-    data=dict(x=x,y=y,desc=desc,y2=y2)
+    data=dict(x=x,y=y,desc=desc,y2=y2,exppay=exppay,sharing=sharing)
     source = ColumnDataSource(data)
     hover = HoverTool(tooltips=[
             ("rank", "@x"),
-            ("pay/day", "@y{0.0}"),
+            ("act pay/day", "@y{0.0}"),
+            ("exp pay/day", "@exppay{0.0}"),
+            ("sharing %", "@sharing"),
             ("delegate", "@desc"),
             ])
     plot=figure(title=None,x_axis_label='rank',y_axis_label='actual pay per day',tools=[hover,'pan','box_zoom','reset'],plot_width=700, plot_height=300)
