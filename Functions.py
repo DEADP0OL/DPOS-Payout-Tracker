@@ -259,6 +259,8 @@ def getpayoutstats(address,days=35,orderby='rewards/day'):
         otherpools = otherpools.set_index('delegate')
         otherpools.rename(columns={'rewards/day': 'exp pay/day'}, inplace=True)
         otherpools.index.name = None
+        otherpools = otherpools[~otherpools.index.duplicated(keep='first')]
+        poolstats = poolstats[~poolstats.index.duplicated(keep='first')]
     except:
         return None,None,None,None,None
     return payoutstats,otherpools,earnedperday,expectedearnings,balance
