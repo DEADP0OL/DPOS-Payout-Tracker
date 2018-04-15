@@ -274,8 +274,8 @@ def create_figure(df):
     source = ColumnDataSource(data)
     hover = HoverTool(tooltips=[
             ("rank", "@x"),
-            ("act pay/day", "@y{0.0}"),
-            ("exp pay/day", "@exppay{0.0}"),
+            ("act pay/day", "@y{0.00}"),
+            ("exp pay/day", "@exppay{0.00}"),
             ("sharing %", "@sharing"),
             ("delegate", "@desc"),
             ])
