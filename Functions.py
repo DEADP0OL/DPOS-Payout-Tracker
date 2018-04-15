@@ -164,9 +164,13 @@ def getpools(file):
 
 def getpoolstats(pools,delegates,numdelegates,blockrewards,blockspermin,balance=10000):
     delegates=delegates[['username','rank','vote']]
+    if balance>80000:
+        rnd=2
+    else:
+        rnd=3
     totalrewardsperday=blockrewards*blockspermin*60*24/numdelegates
     poolstats=pd.merge(pools,delegates,how='left',left_on='delegate',right_on='username')
-    poolstats['rewards/day']=((balance/poolstats['vote'])*totalrewardsperday*(poolstats['listed % share']/100)).round(2)
+    poolstats['rewards/day']=((balance/poolstats['vote'])*totalrewardsperday*(poolstats['listed % share']/100)).round(rnd)
     poolstats=poolstats.sort_values(by='rewards/day',ascending=False)
     del poolstats['username']
     poolstats=poolstats[poolstats['vote']>=0]
@@ -185,7 +189,7 @@ def getpayoutstats(address,days=35,orderby='rewards/day'):
     try:
         url,payaccts,pools,coin,numberofdelegates,blockrewards,blockspermin,multiplier=getcoindata(address)
         balance=getbalance(url,address)
-        if balance>100000:
+        if balance>80000:
             rnd=2
         else:
             rnd=3
