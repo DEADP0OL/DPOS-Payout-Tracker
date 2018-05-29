@@ -8,5 +8,11 @@
 	{"delegate":"kippers","payoutacct":"dutch_pool_payout",
 	"address":"4144029327709660414LWF","payaddress":"5343180154894298021LWF"},
 	{"delegate":"thamar","payoutacct":"dutch_pool_payout",
-	"address":"567015584193522108LWF","payaddress":"5343180154894298021LWF"}
+	"address":"567015584193522108LWF","payaddress":"5343180154894298021LWF"},
+	{"delegate":"lwftap","payoutacct":"lwfpayout",
+	"address":"2347037050693041247LWF","payaddress":"16706528736617234923LWF"},
+	{"delegate":"lwffaucet","payoutacct":"lwfpayout",
+	"address":"11221209678368966679LWF","payaddress":"16706528736617234923LWF"},
+	{"delegate":"lwfspigot","payoutacct":"lwfpayout",
+	"address":"2077645904565552324LWF","payaddress":"16706528736617234923LWF"}
 ]
