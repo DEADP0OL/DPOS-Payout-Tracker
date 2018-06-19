@@ -242,7 +242,7 @@ def getpayoutstats(address,days=35,orderby='rewards/day'):
         payoutstats.loc[payoutstats['listed % share'].isnull(), ['comments']] = 'not listed pool'
         payoutstats['total paid']=(payoutstats['total paid']/payoutstats['days_voted']).round(rnd)
         dropcols=['address','productivity','senderId','rate','publicKey','producedblocks','missedblocks','approval','vote','payments','portion','vote count','total approval','percent shared','payouts','paid x approval','minpayused','website','days_voted']
-        dropcols = [c for c in dropcols if c in payoutstats.index]
+        dropcols = [c for c in dropcols if c in list(payoutstats.columns.values)]
         payoutstats=payoutstats.drop(dropcols,axis=1)
         payoutstats=payoutstats.sort_values(by=orderby,ascending=False)
         delegates=getdelegates(url,.1,multiplier)
