@@ -30,14 +30,16 @@ def getvoters(url,address):
 
 def getdelegates(url,minapproval=1,multiplier=100000000):
     i=0
-    delegates = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)+'&orderBy=vote').json()['delegates'])
+    delegates = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)).json()['delegates'])
+    #delegates = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)+'&orderBy=vote').json()['delegates'])
     delegates['vote']=pd.to_numeric(delegates['vote'])/multiplier
     delegates['approval']=pd.to_numeric(delegates['approval'])
     approval = delegates['approval'].iloc[-1]
     length = len(delegates)
     while approval>=minapproval:
         i=i+length
-        delegates1 = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)+'&orderBy=vote').json()['delegates'])
+        #delegates1 = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)+'&orderBy=vote').json()['delegates'])
+        delegates1 = pd.DataFrame(requests.get(url+'delegates?offset='+str(i)).json()['delegates'])
         if not delegates1.empty:
             delegates1['vote']=pd.to_numeric(delegates1['vote'])/multiplier
             delegates1['approval']=pd.to_numeric(delegates1['approval'])
