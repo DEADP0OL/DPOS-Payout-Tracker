@@ -3,6 +3,7 @@ from wtforms import Form, TextField, TextAreaField, validators, StringField, Sub
 from bokeh.embed import components
 from socket import gethostname
 from Functions import *
+import re
 
 # App config.
 DEBUG = True
@@ -42,8 +43,8 @@ def tracker():
             flash('Error: Invalid Address.')
             return render_template('form.html', form=form)
         else:
-            table=payoutstats.to_html(classes=["table-bordered", "table-striped", "table-hover"])
-            table2=otherpools.to_html(classes=["table-bordered", "table-striped", "table-hover"])
+            table=payoutstats.to_html(border = 0,classes=["display"])
+            table2=otherpools.to_html(border = 0,classes=["display"])
             pscript,pdiv=components(create_figure(payoutstats))
             return render_template('tracker.html', form=form,show=table,show2=table2,dayspan=dayspan,address=address,script=pscript,div=pdiv,earnings=payperday,expectedearnings=expectedpayperday,balance=balance)
 
